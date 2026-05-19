@@ -122,21 +122,41 @@ The generator does not call Google Search, Google Alerts, SerpApi, Brave, Tavily
 
 ## Generate Google Alert Queries
 
+Create a local virtual environment:
+
+```bash
+python3 -m venv .venv
+```
+
+Install dependencies:
+
+```bash
+.venv/bin/python -m pip install -r requirements.txt
+```
+
 Run:
 
 ```bash
-python -m gethired.google_alerts config/search_profile.example.json
+.venv/bin/python -m gethired.google_alerts config/search_profile.example.json
 ```
 
 To also generate selected priority keyword queries:
 
 ```bash
-python -m gethired.google_alerts config/search_profile.example.json --include-priority-keywords
+.venv/bin/python -m gethired.google_alerts config/search_profile.example.json --include-priority-keywords
 ```
 
 Copy the generated lines manually into Google Alerts.
 
 ## Run Tests
+
+After creating the virtual environment and installing dependencies, run:
+
+```bash
+.venv/bin/python -m pytest -q
+```
+
+If your shell has a `python` command mapped to the project environment, this also works:
 
 ```bash
 python -m pytest -q
