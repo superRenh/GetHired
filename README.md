@@ -148,6 +148,41 @@ To also generate selected priority keyword queries:
 
 Copy the generated lines manually into Google Alerts.
 
+## Manual Google Alerts Settings
+
+When creating Google Alerts manually, keep location terms such as `Germany`, `Berlin`, `Munich`, or `Remote` inside the query text itself.
+
+Do not use the Google Alerts Region filter for Germany during Phase 1 testing. Manual testing showed that Google Alerts preview may return no results when Region is set to Germany, even for ATS job pages whose content includes German job locations.
+
+Recommended Google Alerts settings:
+
+- Frequency: As-it-happens or At most once a day
+- Sources: Automatic or Web
+- Language: Any language / 不限語言
+- Region: Any region / 不限地區
+- How many: All results during testing, then Best results if emails become too noisy
+- Deliver to: Gmail
+
+GetHired does not call Search APIs and does not automate Google Alerts creation.
+
+## Run The Local UI
+
+The current UI is a small local page for manually reviewing and copying generated Google Alert queries.
+
+Start it with:
+
+```bash
+.venv/bin/python -m gethired.web_app config/search_profile.example.json
+```
+
+Then open:
+
+```text
+http://localhost:8000
+```
+
+This UI does not save changes yet. It reads the Search Profile JSON file, generates Google Alert queries, and gives you a copy-friendly text area.
+
 ## Run Tests
 
 After creating the virtual environment and installing dependencies, run:
