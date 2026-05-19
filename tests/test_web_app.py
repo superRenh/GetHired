@@ -4,6 +4,7 @@ from gethired.web_app import (
     _parse_max_queries,
     _profile_from_form,
     build_page,
+    load_job_listings,
 )
 
 
@@ -24,6 +25,10 @@ def test_build_page_renders_profile_and_queries():
     )
 
     assert "GetHired" in page
+    assert "Search Profile" in page
+    assert "Job Listings" in page
+    assert 'id="search-profile" class="layout tab-panel"' in page
+    assert 'id="job-listings" class="tab-panel"' in page
     assert "ML Germany" in page
     assert 'name="profile_name"' in page
     assert 'name="job_titles"' in page
@@ -34,6 +39,53 @@ def test_build_page_renders_profile_and_queries():
     assert "Data Scientist" in page
     assert 'site:jobs.lever.co &quot;Data Scientist&quot; Germany' in page
     assert "1 queries ready" in page
+
+
+def test_build_page_renders_job_listings():
+    profile = SearchProfile(
+        profile_name="ML Germany",
+        job_titles=("Data Scientist",),
+        locations=("Germany",),
+    )
+
+    page = build_page(
+        profile,
+        queries=[],
+        job_listings=[
+            {
+                "title": "Machine Learning Engineer",
+                "company": "Example GmbH",
+                "location": "Berlin, Germany",
+                "salary": "N/A",
+                "date": "2026-05-19",
+                "source": "Google Alerts",
+                "url": "https://example.com/job",
+                "summary": "Build ML systems.",
+                "company_info": "Example company.",
+                "description": "Full job description.",
+            }
+        ],
+        include_priority_keywords=False,
+        max_queries=50,
+    )
+
+    assert "Machine Learning Engineer" in page
+    assert "Example GmbH" in page
+    assert "Berlin, Germany" in page
+    assert "Details" in page
+    assert "Link" in page
+
+
+def test_load_job_listings_reads_fixture(tmp_path):
+    fixture = tmp_path / "jobs.json"
+    fixture.write_text(
+        '[{"title": "Data Scientist", "company": "Example"}]',
+        encoding="utf-8",
+    )
+
+    assert load_job_listings(fixture) == [
+        {"title": "Data Scientist", "company": "Example"}
+    ]
 
 
 def test_build_page_marks_priority_keyword_checkbox_when_enabled():

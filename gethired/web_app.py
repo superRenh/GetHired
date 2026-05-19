@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import html
+import json
 import logging
 from dataclasses import replace
 from http import HTTPStatus
@@ -20,12 +21,14 @@ LOGGER = logging.getLogger(__name__)
 DEFAULT_HOST = "127.0.0.1"
 DEFAULT_PORT = 8000
 DEFAULT_MAX_QUERIES = 50
+DEFAULT_JOB_LISTINGS_PATH = Path("fixtures/job_listings.example.json")
 
 
 def build_page(
     profile: SearchProfile,
     *,
     queries: list[str],
+    job_listings: list[dict[str, str]] | None = None,
     include_priority_keywords: bool,
     max_queries: int,
     error_message: str | None = None,
@@ -33,6 +36,7 @@ def build_page(
     """Build the local query review page."""
     escaped_queries = html.escape("\n".join(queries))
     profile_summary = _build_profile_summary(profile)
+    job_listings_table = _build_job_listings(job_listings or [])
     checked = " checked" if include_priority_keywords else ""
     escaped_error = html.escape(error_message) if error_message else ""
     error_block = (
@@ -100,6 +104,41 @@ def build_page(
     }}
     main {{
       padding: 28px 0 40px;
+    }}
+    .tabs {{
+      display: flex;
+      gap: 8px;
+      margin-bottom: 18px;
+      border-bottom: 1px solid var(--line);
+    }}
+    .tab-link {{
+      display: inline-flex;
+      align-items: center;
+      min-height: 42px;
+      border: 1px solid var(--line);
+      border-bottom: 0;
+      border-radius: 8px 8px 0 0;
+      padding: 0 16px;
+      background: var(--surface);
+      color: var(--muted);
+      font-weight: 800;
+      text-decoration: none;
+    }}
+    .tab-link-active {{
+      background: var(--panel);
+      color: var(--text);
+    }}
+    .tab-panel {{
+      display: none;
+    }}
+    #search-profile {{
+      display: grid;
+    }}
+    #job-listings:target {{
+      display: block;
+    }}
+    body:has(#job-listings:target) #search-profile {{
+      display: none;
     }}
     .layout {{
       display: grid;
@@ -252,6 +291,44 @@ def build_page(
       color: var(--warn-text);
       border: 1px solid #f2c078;
     }}
+    .jobs-table {{
+      width: 100%;
+      border-collapse: collapse;
+      background: #ffffff;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      overflow: hidden;
+    }}
+    .jobs-table th,
+    .jobs-table td {{
+      border-bottom: 1px solid var(--line);
+      padding: 14px;
+      text-align: left;
+      vertical-align: top;
+    }}
+    .jobs-table th {{
+      color: var(--muted);
+      font-size: 12px;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+    }}
+    .job-title {{
+      color: var(--text);
+      font-weight: 800;
+    }}
+    .job-source {{
+      color: var(--muted);
+      margin-top: 2px;
+    }}
+    details {{
+      margin-top: 12px;
+      color: var(--muted);
+    }}
+    summary {{
+      color: var(--accent);
+      cursor: pointer;
+      font-weight: 800;
+    }}
     @media (max-width: 820px) {{
       .layout {{
         grid-template-columns: 1fr;
@@ -278,7 +355,11 @@ def build_page(
     </div>
   </header>
   <main class="shell">
-    <div class="layout">
+    <nav class="tabs" aria-label="GetHired sections">
+      <a class="tab-link tab-link-active" href="#search-profile">Search Profile</a>
+      <a class="tab-link" href="#job-listings">Job Listings</a>
+    </nav>
+    <div id="search-profile" class="layout tab-panel">
       <section aria-labelledby="profile-heading">
         <div class="section-header">
           <h2 id="profile-heading">Search Profile</h2>
@@ -312,6 +393,12 @@ def build_page(
         </div>
       </section>
     </div>
+    <section id="job-listings" class="tab-panel" aria-labelledby="job-listings-heading">
+      <div class="section-header">
+        <h2 id="job-listings-heading">Job Listings</h2>
+      </div>
+      {job_listings_table}
+    </section>
   </main>
 </body>
 </html>"""
@@ -357,6 +444,65 @@ def _build_profile_summary(profile: SearchProfile) -> str:
         ),
     ]
     return f'<div class="profile-fields">{"".join(fields)}</div>'
+
+
+def _build_job_listings(job_listings: list[dict[str, str]]) -> str:
+    if not job_listings:
+        return '<p class="query-hint">No job listings loaded yet.</p>'
+
+    rows = []
+    for job in job_listings:
+        title = html.escape(job.get("title", "Untitled"))
+        source = html.escape(job.get("source", "Unknown"))
+        company = html.escape(job.get("company", ""))
+        location = html.escape(job.get("location", ""))
+        salary = html.escape(job.get("salary", "N/A"))
+        date = html.escape(job.get("date", ""))
+        url = html.escape(job.get("url", "#"))
+        summary = html.escape(job.get("summary", ""))
+        company_info = html.escape(job.get("company_info", ""))
+        description = html.escape(job.get("description", ""))
+        rows.append(
+            "<tr>"
+            f'<td><div class="job-title">{title}</div><div class="job-source">{source}</div>'
+            f"<details><summary>Details</summary><p><strong>Job Summary / Requirements:</strong></p><p>{summary}</p>"
+            f"<p><strong>Company Info:</strong></p><p>{company_info}</p>"
+            f"<p><strong>Full Description:</strong></p><p>{description}</p></details></td>"
+            f"<td>{company}</td>"
+            f"<td>{location}</td>"
+            f"<td>{salary}</td>"
+            f"<td>{date}</td>"
+            f'<td><a href="{url}" target="_blank" rel="noreferrer">Link</a></td>'
+            "</tr>"
+        )
+
+    return (
+        '<table class="jobs-table"><thead><tr>'
+        "<th>Title</th><th>Company</th><th>Location</th><th>Salary</th><th>Date</th><th>Link</th>"
+        "</tr></thead><tbody>"
+        + "".join(rows)
+        + "</tbody></table>"
+    )
+
+
+def load_job_listings(path: str | Path = DEFAULT_JOB_LISTINGS_PATH) -> list[dict[str, str]]:
+    listings_path = Path(path)
+    if not listings_path.exists():
+        LOGGER.info("Job listings fixture not found: %s", listings_path)
+        return []
+
+    with listings_path.open("r", encoding="utf-8") as listings_file:
+        data = json.load(listings_file)
+
+    if not isinstance(data, list):
+        raise ValueError("Job listings fixture must contain a list")
+
+    listings = []
+    for item in data:
+        if not isinstance(item, dict):
+            raise ValueError("Each job listing must be an object")
+        listings.append({str(key): str(value) for key, value in item.items()})
+    return listings
 
 
 def _build_text_input(label: str, name: str, value: str, note: str) -> str:
@@ -436,6 +582,7 @@ def create_handler(profile_path: str | Path) -> type[BaseHTTPRequestHandler]:
                 page = build_page(
                     profile,
                     queries=queries,
+                    job_listings=load_job_listings(),
                     include_priority_keywords=include_priority_keywords,
                     max_queries=max_queries,
                     error_message=error_message,
