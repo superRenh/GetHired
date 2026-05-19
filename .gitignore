@@ -157,6 +157,20 @@ ENV/
 env.bak/
 venv.bak/
 
+# GetHired local-only files
+config/search_profile.local.json
+config/*credentials*.json
+config/*token*.json
+credentials/
+tokens/
+data/
+output/
+logs/
+*.sqlite
+*.sqlite3
+*.db
+.DS_Store
+
 # Spyder project settings
 .spyderproject
 .spyproject
