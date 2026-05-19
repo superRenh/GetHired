@@ -1,0 +1,32 @@
+{
+  "profile_name": "ML Data AI Germany",
+  "job_titles": [
+    "Data Scientist",
+    "Machine Learning Engineer",
+    "AI Engineer"
+  ],
+  "keywords": [
+    "Python",
+    "SQL",
+    "Azure",
+    "Cloud"
+  ],
+  "priority_keywords": [
+    "LLM",
+    "RAG",
+    "LangChain",
+    "LangGraph",
+    "Agentic AI"
+  ],
+  "locations": [
+    "Germany"
+  ],
+  "exclude_keywords": [
+    "internship",
+    "unpaid"
+  ],
+  "enabled_email_sources": ["google_alerts", "gmail_job_alerts"],
+  "google_alert_queries": [],
+  "scan_frequency_minutes": 30,
+  "notification_score_threshold": 70
+}
