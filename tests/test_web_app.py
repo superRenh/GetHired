@@ -1,5 +1,6 @@
 from gethired.search_profile import SearchProfile
 from gethired.web_app import (
+    _parse_job_filters,
     _parse_list_input,
     _parse_max_queries,
     _profile_from_form,
@@ -75,6 +76,8 @@ def test_build_page_renders_job_listings():
     assert "Machine Learning Engineer" in page
     assert "Example GmbH" in page
     assert "Berlin, Germany" in page
+    assert "title/company/location" in page
+    assert 'name="time_preset"' in page
     assert "Details" in page
     assert "Link" in page
 
@@ -109,10 +112,20 @@ def test_load_job_listings_prefers_db(tmp_path):
             raw_text="DB description",
         )
 
-    rows = load_job_listings_from_db(db_path)
+    rows = load_job_listings_from_db(db_path, filters={"time_preset": "all", "search": "", "from_date": "", "to_date": ""})
     assert len(rows) == 1
     assert rows[0]["title"] == "DB Role"
     assert rows[0]["company"] == "DB Company"
+
+
+def test_parse_job_filters_from_query_string():
+    filters = _parse_job_filters("/?time_preset=3d&search=berlin&from_date=2026-05-01&to_date=2026-05-20")
+    assert filters == {
+        "time_preset": "3d",
+        "search": "berlin",
+        "from_date": "2026-05-01",
+        "to_date": "2026-05-20",
+    }
 
 
 def connect_for_test(db_path):

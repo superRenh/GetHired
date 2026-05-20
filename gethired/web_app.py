@@ -12,7 +12,7 @@ from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 from typing import Any
-from urllib.parse import parse_qs
+from urllib.parse import parse_qs, urlparse
 
 from gethired.google_alerts import generate_google_alert_queries
 from gethired.search_profile import SearchProfile, load_search_profile
@@ -32,6 +32,7 @@ def build_page(
     *,
     queries: list[str],
     job_listings: list[dict[str, str]] | None = None,
+    job_filters: dict[str, str] | None = None,
     include_priority_keywords: bool,
     max_queries: int,
     error_message: str | None = None,
@@ -39,7 +40,9 @@ def build_page(
     """Build the local query review page."""
     escaped_queries = html.escape("\n".join(queries))
     profile_summary = _build_profile_summary(profile)
+    filters = job_filters or _default_job_filters()
     job_listings_table = _build_job_listings(job_listings or [])
+    job_filters_form = _build_job_filters_form(filters)
     checked = " checked" if include_priority_keywords else ""
     escaped_error = html.escape(error_message) if error_message else ""
     error_block = (
@@ -212,6 +215,16 @@ def build_page(
       font: inherit;
       background: #ffffff;
     }}
+    input[type="text"],
+    input[type="date"],
+    select {{
+      min-height: 38px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      padding: 8px 10px;
+      font: inherit;
+      background: #ffffff;
+    }}
     button {{
       min-height: 38px;
       border: 0;
@@ -332,8 +345,24 @@ def build_page(
       cursor: pointer;
       font-weight: 800;
     }}
+    .jobs-filter-panel {{
+      margin-bottom: 14px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--surface);
+      padding: 14px;
+    }}
+    .jobs-filter-grid {{
+      display: grid;
+      grid-template-columns: 140px 1fr 160px 160px 120px;
+      gap: 10px;
+      align-items: end;
+    }}
     @media (max-width: 820px) {{
       .layout {{
+        grid-template-columns: 1fr;
+      }}
+      .jobs-filter-grid {{
         grid-template-columns: 1fr;
       }}
       .section-header {{
@@ -400,6 +429,7 @@ def build_page(
       <div class="section-header">
         <h2 id="job-listings-heading">Job Listings</h2>
       </div>
+      {job_filters_form}
       {job_listings_table}
     </section>
   </main>
@@ -488,12 +518,68 @@ def _build_job_listings(job_listings: list[dict[str, str]]) -> str:
     )
 
 
+def _build_job_filters_form(filters: dict[str, str]) -> str:
+    escaped_search = html.escape(filters["search"])
+    selected = filters["time_preset"]
+    options = []
+    for value, label in [
+        ("all", "All"),
+        ("1d", "1 day"),
+        ("3d", "3 days"),
+        ("1w", "1 week"),
+    ]:
+        selected_attr = " selected" if selected == value else ""
+        options.append(f'<option value="{value}"{selected_attr}>{label}</option>')
+
+    return (
+        '<div class="jobs-filter-panel">'
+        '<form method="get" action="#job-listings" class="jobs-filter-grid">'
+        '<label>Time'
+        f'<select name="time_preset">{"".join(options)}</select>'
+        "</label>"
+        '<label>Search'
+        f'<input type="text" name="search" placeholder="title/company/location" value="{escaped_search}">'
+        "</label>"
+        '<label>From'
+        f'<input type="date" name="from_date" value="{html.escape(filters["from_date"])}">'
+        "</label>"
+        '<label>To'
+        f'<input type="date" name="to_date" value="{html.escape(filters["to_date"])}">'
+        "</label>"
+        '<button type="submit">Apply</button>'
+        "</form>"
+        "</div>"
+    )
+
+
+def _default_job_filters() -> dict[str, str]:
+    return {
+        "time_preset": "all",
+        "search": "",
+        "from_date": "",
+        "to_date": "",
+    }
+
+
+def _parse_job_filters(path: str) -> dict[str, str]:
+    query = parse_qs(urlparse(path).query)
+    filters = _default_job_filters()
+    time_preset = query.get("time_preset", [filters["time_preset"]])[0]
+    if time_preset in {"all", "1d", "3d", "1w"}:
+        filters["time_preset"] = time_preset
+    filters["search"] = query.get("search", [""])[0].strip()
+    filters["from_date"] = query.get("from_date", [""])[0].strip()
+    filters["to_date"] = query.get("to_date", [""])[0].strip()
+    return filters
+
+
 def load_job_listings(
     path: str | Path = DEFAULT_JOB_LISTINGS_PATH,
     *,
     db_path: str | Path = DEFAULT_DB_PATH,
+    filters: dict[str, str] | None = None,
 ) -> list[dict[str, str]]:
-    db_listings = load_job_listings_from_db(db_path)
+    db_listings = load_job_listings_from_db(db_path, filters=filters)
     if db_listings:
         return db_listings
     return load_job_listings_fixture(path)
@@ -519,10 +605,29 @@ def load_job_listings_fixture(path: str | Path = DEFAULT_JOB_LISTINGS_PATH) -> l
     return listings
 
 
-def load_job_listings_from_db(db_path: str | Path = DEFAULT_DB_PATH) -> list[dict[str, str]]:
+def load_job_listings_from_db(
+    db_path: str | Path = DEFAULT_DB_PATH,
+    *,
+    filters: dict[str, str] | None = None,
+) -> list[dict[str, str]]:
+    query_filters = filters or _default_job_filters()
+    from_ts = (
+        f'{query_filters["from_date"]}T00:00:00Z' if query_filters["from_date"] else None
+    )
+    to_ts = f'{query_filters["to_date"]}T23:59:59Z' if query_filters["to_date"] else None
+    preset = query_filters["time_preset"]
+    if preset == "all":
+        preset = None
     try:
         with connect_db(db_path) as connection:
-            rows = list_job_postings(connection, limit=200)
+            rows = list_job_postings(
+                connection,
+                time_preset=preset,
+                from_ts=from_ts,
+                to_ts=to_ts,
+                search=query_filters["search"],
+                limit=200,
+            )
     except sqlite3.OperationalError:
         LOGGER.info("Job listings DB schema is not initialized yet")
         return []
@@ -579,7 +684,11 @@ def create_handler(profile_path: str | Path) -> type[BaseHTTPRequestHandler]:
 
     class GetHiredRequestHandler(BaseHTTPRequestHandler):
         def do_GET(self) -> None:
-            self._render(include_priority_keywords=False, max_queries=DEFAULT_MAX_QUERIES)
+            self._render(
+                include_priority_keywords=False,
+                max_queries=DEFAULT_MAX_QUERIES,
+                job_filters=_parse_job_filters(self.path),
+            )
 
         def do_POST(self) -> None:
             content_length = int(self.headers.get("Content-Length", "0"))
@@ -610,6 +719,7 @@ def create_handler(profile_path: str | Path) -> type[BaseHTTPRequestHandler]:
             profile: SearchProfile | None = None,
             include_priority_keywords: bool,
             max_queries: int,
+            job_filters: dict[str, str] | None = None,
             error_message: str | None = None,
         ) -> None:
             try:
@@ -623,7 +733,8 @@ def create_handler(profile_path: str | Path) -> type[BaseHTTPRequestHandler]:
                 page = build_page(
                     profile,
                     queries=queries,
-                    job_listings=load_job_listings(),
+                    job_listings=load_job_listings(filters=job_filters),
+                    job_filters=job_filters,
                     include_priority_keywords=include_priority_keywords,
                     max_queries=max_queries,
                     error_message=error_message,
