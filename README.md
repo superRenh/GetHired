@@ -183,6 +183,13 @@ http://localhost:8000
 
 This UI does not save changes yet. It reads the Search Profile JSON file, generates Google Alert queries, and gives you a copy-friendly text area.
 
+The UI has two tabs:
+
+- Search Profile: edit query inputs and generate Google Alert queries.
+- Job Listings: preview the job review table using local fixture data.
+
+The Job Listings tab does not connect to Gmail yet. The planned Gmail label is `GetHired/Job Alerts`; future Gmail integration should read that label with Gmail API read-only access and parse job alert emails into this table.
+
 ## Run Tests
 
 After creating the virtual environment and installing dependencies, run:
@@ -196,6 +203,43 @@ If your shell has a `python` command mapped to the project environment, this als
 ```bash
 python -m pytest -q
 ```
+
+## Local Database Plan (Phase 1)
+
+GetHired Phase 1 uses a local SQLite database. The schema is defined in:
+
+- `db/schema.sql`
+
+Core tables:
+
+- `sync_state`: Gmail source cursor state (`last_history_id`) per label/source.
+- `gmail_messages`: raw message metadata discovered from Gmail delta sync.
+- `parsed_jobs`: parser output candidates extracted from Gmail messages.
+- `job_postings`: canonical deduplicated jobs for UI review and scoring.
+- `job_posting_sources`: provenance links from canonical jobs back to parsed jobs/messages.
+
+### Gmail Delta Sync Rule
+
+Phase 1 follows a strict `historyId`-first delta model:
+
+1. Read `last_history_id` from `sync_state` for `gmail_label_name = GetHired/Job Alerts`.
+2. Call Gmail History API with `startHistoryId = last_history_id`.
+3. Fetch changed message IDs and upsert `gmail_messages`.
+4. Parse changed messages into `parsed_jobs`.
+5. Upsert deduplicated rows into `job_postings`.
+6. Persist the latest history ID back to `sync_state`.
+
+No mitigation fallback path is defined in this phase for expired history IDs. If Gmail returns an invalid/expired `startHistoryId`, the scan should fail fast and require explicit re-bootstrap of the cursor.
+
+### Planned Job List Filters
+
+The DB layout is designed to support:
+
+- Time filters: `1 day`, `3 days`, `1 week`, custom date interval.
+- Search filters: title, company, location.
+- Status filters: `new`, `reviewing`, `applied`, `ignored`.
+
+Time filters should use `job_postings.detected_at` as the default recency field.
 
 ## Current Limitations
 

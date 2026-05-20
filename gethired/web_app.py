@@ -6,6 +6,7 @@ import argparse
 import html
 import json
 import logging
+import sqlite3
 from dataclasses import replace
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, HTTPServer
@@ -15,6 +16,8 @@ from urllib.parse import parse_qs
 
 from gethired.google_alerts import generate_google_alert_queries
 from gethired.search_profile import SearchProfile, load_search_profile
+from gethired.db import DEFAULT_DB_PATH, connect_db
+from gethired.repositories.job_postings_repo import list_job_postings
 
 LOGGER = logging.getLogger(__name__)
 
@@ -485,7 +488,18 @@ def _build_job_listings(job_listings: list[dict[str, str]]) -> str:
     )
 
 
-def load_job_listings(path: str | Path = DEFAULT_JOB_LISTINGS_PATH) -> list[dict[str, str]]:
+def load_job_listings(
+    path: str | Path = DEFAULT_JOB_LISTINGS_PATH,
+    *,
+    db_path: str | Path = DEFAULT_DB_PATH,
+) -> list[dict[str, str]]:
+    db_listings = load_job_listings_from_db(db_path)
+    if db_listings:
+        return db_listings
+    return load_job_listings_fixture(path)
+
+
+def load_job_listings_fixture(path: str | Path = DEFAULT_JOB_LISTINGS_PATH) -> list[dict[str, str]]:
     listings_path = Path(path)
     if not listings_path.exists():
         LOGGER.info("Job listings fixture not found: %s", listings_path)
@@ -502,6 +516,33 @@ def load_job_listings(path: str | Path = DEFAULT_JOB_LISTINGS_PATH) -> list[dict
         if not isinstance(item, dict):
             raise ValueError("Each job listing must be an object")
         listings.append({str(key): str(value) for key, value in item.items()})
+    return listings
+
+
+def load_job_listings_from_db(db_path: str | Path = DEFAULT_DB_PATH) -> list[dict[str, str]]:
+    try:
+        with connect_db(db_path) as connection:
+            rows = list_job_postings(connection, limit=200)
+    except sqlite3.OperationalError:
+        LOGGER.info("Job listings DB schema is not initialized yet")
+        return []
+
+    listings: list[dict[str, str]] = []
+    for row in rows:
+        listings.append(
+            {
+                "title": row.title,
+                "source": row.source or row.source_type or "Unknown",
+                "company": row.company,
+                "location": row.location,
+                "salary": "N/A",
+                "date": row.detected_at[:10],
+                "url": row.url,
+                "summary": row.description or "",
+                "company_info": "",
+                "description": row.raw_text or row.description or "",
+            }
+        )
     return listings
 
 

@@ -5,7 +5,10 @@ from gethired.web_app import (
     _profile_from_form,
     build_page,
     load_job_listings,
+    load_job_listings_from_db,
 )
+from gethired.db import init_db
+from gethired.repositories.job_postings_repo import upsert_job_posting
 
 
 def test_build_page_renders_profile_and_queries():
@@ -83,9 +86,39 @@ def test_load_job_listings_reads_fixture(tmp_path):
         encoding="utf-8",
     )
 
-    assert load_job_listings(fixture) == [
+    assert load_job_listings(path=fixture, db_path=tmp_path / "missing.sqlite3") == [
         {"title": "Data Scientist", "company": "Example"}
     ]
+
+
+def test_load_job_listings_prefers_db(tmp_path):
+    db_path = tmp_path / "gethired.sqlite3"
+    init_db(db_path)
+    with connect_for_test(db_path) as connection:
+        upsert_job_posting(
+            connection,
+            canonical_key="db-key-1",
+            title="DB Role",
+            company="DB Company",
+            location="Berlin, Germany",
+            source="gmail",
+            source_type="google_alert",
+            url="https://example.com/db-role",
+            detected_at="2026-05-20T12:00:00Z",
+            description="DB summary",
+            raw_text="DB description",
+        )
+
+    rows = load_job_listings_from_db(db_path)
+    assert len(rows) == 1
+    assert rows[0]["title"] == "DB Role"
+    assert rows[0]["company"] == "DB Company"
+
+
+def connect_for_test(db_path):
+    from gethired.db import connect_db
+
+    return connect_db(db_path)
 
 
 def test_build_page_marks_priority_keyword_checkbox_when_enabled():
