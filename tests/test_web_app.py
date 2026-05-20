@@ -1,5 +1,6 @@
 from gethired.search_profile import SearchProfile
 from gethired.web_app import (
+    _parse_active_tab,
     _parse_job_filters,
     _parse_list_input,
     _parse_max_queries,
@@ -33,6 +34,7 @@ def test_build_page_renders_profile_and_queries():
     assert "Job Listings" in page
     assert 'id="search-profile" class="layout tab-panel"' in page
     assert 'id="job-listings" class="tab-panel"' in page
+    assert 'tab-link tab-link-active" href="/?tab=search-profile#search-profile"' in page
     assert "ML Germany" in page
     assert 'name="profile_name"' in page
     assert 'name="job_titles"' in page
@@ -82,6 +84,23 @@ def test_build_page_renders_job_listings():
     assert "Link" in page
 
 
+def test_build_page_marks_job_tab_active():
+    profile = SearchProfile(
+        profile_name="ML Germany",
+        job_titles=("Data Scientist",),
+        locations=("Germany",),
+    )
+    page = build_page(
+        profile,
+        queries=[],
+        active_tab="job-listings",
+        include_priority_keywords=False,
+        max_queries=50,
+    )
+    assert 'tab-link tab-link-active" href="/?tab=job-listings#job-listings"' in page
+    assert 'id="job-listings" class="tab-panel" style="display: block;"' in page
+
+
 def test_load_job_listings_reads_fixture(tmp_path):
     fixture = tmp_path / "jobs.json"
     fixture.write_text(
@@ -126,6 +145,11 @@ def test_parse_job_filters_from_query_string():
         "from_date": "2026-05-01",
         "to_date": "2026-05-20",
     }
+
+
+def test_parse_active_tab_from_query():
+    assert _parse_active_tab("/?tab=job-listings") == "job-listings"
+    assert _parse_active_tab("/") == "search-profile"
 
 
 def connect_for_test(db_path):

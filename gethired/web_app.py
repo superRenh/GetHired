@@ -33,6 +33,7 @@ def build_page(
     queries: list[str],
     job_listings: list[dict[str, str]] | None = None,
     job_filters: dict[str, str] | None = None,
+    active_tab: str = "search-profile",
     include_priority_keywords: bool,
     max_queries: int,
     error_message: str | None = None,
@@ -43,6 +44,11 @@ def build_page(
     filters = job_filters or _default_job_filters()
     job_listings_table = _build_job_listings(job_listings or [])
     job_filters_form = _build_job_filters_form(filters)
+    active_tab_value = active_tab if active_tab in {"search-profile", "job-listings"} else "search-profile"
+    search_tab_class = "tab-link tab-link-active" if active_tab_value == "search-profile" else "tab-link"
+    jobs_tab_class = "tab-link tab-link-active" if active_tab_value == "job-listings" else "tab-link"
+    search_panel_style = "display: grid;" if active_tab_value == "search-profile" else "display: none;"
+    jobs_panel_style = "display: block;" if active_tab_value == "job-listings" else "display: none;"
     checked = " checked" if include_priority_keywords else ""
     escaped_error = html.escape(error_message) if error_message else ""
     error_block = (
@@ -135,15 +141,6 @@ def build_page(
       color: var(--text);
     }}
     .tab-panel {{
-      display: none;
-    }}
-    #search-profile {{
-      display: grid;
-    }}
-    #job-listings:target {{
-      display: block;
-    }}
-    body:has(#job-listings:target) #search-profile {{
       display: none;
     }}
     .layout {{
@@ -358,12 +355,40 @@ def build_page(
       gap: 10px;
       align-items: end;
     }}
+    .jobs-filter-actions {{
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      gap: 10px;
+      grid-column: 1 / -1;
+    }}
+    .button-secondary {{
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 34px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      padding: 0 12px;
+      color: var(--muted);
+      background: #ffffff;
+      text-decoration: none;
+      font-weight: 600;
+      white-space: nowrap;
+    }}
     @media (max-width: 820px) {{
       .layout {{
         grid-template-columns: 1fr;
       }}
       .jobs-filter-grid {{
         grid-template-columns: 1fr;
+      }}
+      .jobs-filter-actions {{
+        justify-content: stretch;
+      }}
+      .jobs-filter-actions .button-secondary,
+      .jobs-filter-actions button {{
+        width: 100%;
       }}
       .section-header {{
         align-items: flex-start;
@@ -388,10 +413,10 @@ def build_page(
   </header>
   <main class="shell">
     <nav class="tabs" aria-label="GetHired sections">
-      <a class="tab-link tab-link-active" href="#search-profile">Search Profile</a>
-      <a class="tab-link" href="#job-listings">Job Listings</a>
+      <a class="{search_tab_class}" href="/?tab=search-profile#search-profile">Search Profile</a>
+      <a class="{jobs_tab_class}" href="/?tab=job-listings#job-listings">Job Listings</a>
     </nav>
-    <div id="search-profile" class="layout tab-panel">
+    <div id="search-profile" class="layout tab-panel" style="{search_panel_style}">
       <section aria-labelledby="profile-heading">
         <div class="section-header">
           <h2 id="profile-heading">Search Profile</h2>
@@ -425,7 +450,7 @@ def build_page(
         </div>
       </section>
     </div>
-    <section id="job-listings" class="tab-panel" aria-labelledby="job-listings-heading">
+    <section id="job-listings" class="tab-panel" style="{jobs_panel_style}" aria-labelledby="job-listings-heading">
       <div class="section-header">
         <h2 id="job-listings-heading">Job Listings</h2>
       </div>
@@ -534,6 +559,7 @@ def _build_job_filters_form(filters: dict[str, str]) -> str:
     return (
         '<div class="jobs-filter-panel">'
         '<form method="get" action="#job-listings" class="jobs-filter-grid">'
+        '<input type="hidden" name="tab" value="job-listings">'
         '<label>Time'
         f'<select name="time_preset">{"".join(options)}</select>'
         "</label>"
@@ -546,7 +572,10 @@ def _build_job_filters_form(filters: dict[str, str]) -> str:
         '<label>To'
         f'<input type="date" name="to_date" value="{html.escape(filters["to_date"])}">'
         "</label>"
+        '<div class="jobs-filter-actions">'
         '<button type="submit">Apply</button>'
+        '<a href="/?tab=job-listings#job-listings" class="button-secondary">Clear</a>'
+        "</div>"
         "</form>"
         "</div>"
     )
@@ -571,6 +600,14 @@ def _parse_job_filters(path: str) -> dict[str, str]:
     filters["from_date"] = query.get("from_date", [""])[0].strip()
     filters["to_date"] = query.get("to_date", [""])[0].strip()
     return filters
+
+
+def _parse_active_tab(path: str) -> str:
+    query = parse_qs(urlparse(path).query)
+    tab = query.get("tab", ["search-profile"])[0]
+    if tab == "job-listings":
+        return "job-listings"
+    return "search-profile"
 
 
 def load_job_listings(
@@ -688,6 +725,7 @@ def create_handler(profile_path: str | Path) -> type[BaseHTTPRequestHandler]:
                 include_priority_keywords=False,
                 max_queries=DEFAULT_MAX_QUERIES,
                 job_filters=_parse_job_filters(self.path),
+                active_tab=_parse_active_tab(self.path),
             )
 
         def do_POST(self) -> None:
@@ -707,6 +745,7 @@ def create_handler(profile_path: str | Path) -> type[BaseHTTPRequestHandler]:
                 profile=profile,
                 include_priority_keywords=include_priority_keywords,
                 max_queries=max_queries,
+                active_tab="search-profile",
                 error_message=error_message,
             )
 
@@ -720,6 +759,7 @@ def create_handler(profile_path: str | Path) -> type[BaseHTTPRequestHandler]:
             include_priority_keywords: bool,
             max_queries: int,
             job_filters: dict[str, str] | None = None,
+            active_tab: str = "search-profile",
             error_message: str | None = None,
         ) -> None:
             try:
@@ -735,6 +775,7 @@ def create_handler(profile_path: str | Path) -> type[BaseHTTPRequestHandler]:
                     queries=queries,
                     job_listings=load_job_listings(filters=job_filters),
                     job_filters=job_filters,
+                    active_tab=active_tab,
                     include_priority_keywords=include_priority_keywords,
                     max_queries=max_queries,
                     error_message=error_message,
